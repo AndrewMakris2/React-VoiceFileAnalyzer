@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import Groq from "groq-sdk";
 
-const SUPPORTED_EXTENSIONS = ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"];
+const SUPPORTED_EXTENSIONS = ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm", "mov"];
 const MAX_FILE_SIZE_MB = 25;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -18,6 +18,18 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function convertMovFile(file) {
+  // .mov and .mp4 share the same QuickTime/MPEG-4 container
+  // Re-wrapping as audio/mp4 works for most .mov files
+  const buffer = await file.arrayBuffer();
+  const converted = new File(
+    [buffer],
+    file.name.replace(/\.mov$/i, ".mp4"),
+    { type: "audio/mp4" }
+  );
+  return converted;
 }
 
 export default function App() {
@@ -115,8 +127,12 @@ export default function App() {
         dangerouslyAllowBrowser: true,
       });
 
+      // Convert .mov → .mp4 before sending
+      const ext = file.name.split(".").pop().toLowerCase();
+      const fileToSend = ext === "mov" ? await convertMovFile(file) : file;
+
       const response = await client.audio.transcriptions.create({
-        file,
+        file: fileToSend,
         model: "whisper-large-v3-turbo",
         response_format: "verbose_json",
         timestamp_granularities: ["segment"],
@@ -231,7 +247,7 @@ export default function App() {
           ) : (
             <div className="drop-prompt">
               <span className="drop-icon">📂</span>
-              <p><strong>Drop your audio file here</strong></p>
+              <p><strong>Drop your audio or video file here</strong></p>
               <p className="drop-hint">or click to browse</p>
               <p className="drop-formats">
                 {SUPPORTED_EXTENSIONS.map((e) => `.${e}`).join(" · ")} · max {MAX_FILE_SIZE_MB} MB
@@ -243,7 +259,12 @@ export default function App() {
         {/* ── Audio Preview ── */}
         {audioUrl && (
           <div className="audio-preview">
-            <audio controls src={audioUrl} key={audioUrl} />
+            <video
+              controls
+              src={audioUrl}
+              key={audioUrl}
+              style={{ width: "100%", borderRadius: "8px", maxHeight: "120px" }}
+            />
           </div>
         )}
 
